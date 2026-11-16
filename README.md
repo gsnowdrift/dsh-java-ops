@@ -15,6 +15,12 @@ dsh plugin --profile web remove @gsnowdrift/dsh-java-ops   # 卸载
 dsh plugin --profile web why @gsnowdrift/dsh-java-ops      # 看装的是哪个版本
 ```
 
+想装最新源码而不等 npm 发版：
+
+```bash
+dsh plugin --profile web add github:gsnowdrift/dsh-java-ops
+```
+
 `--profile` 填你实际用的 profile 名（Web GUI 默认常用 `web`，也可能是 `desktop`）。装完重启 DSH，再启用：
 
 ```

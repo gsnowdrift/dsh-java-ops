@@ -1,7 +1,6 @@
 {
   "name": "@gsnowdrift/dsh-java-ops",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Java 服务运行面板：在会话里管理 Spring Boot 服务的启停、重启、构建与 SQL 查询。",
   "exports": {
@@ -33,5 +32,19 @@
   },
   "dependencies": {
     "mysql2": "^3.24.6"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gsnowdrift/dsh-java-ops.git"
+  },
+  "homepage": "https://github.com/gsnowdrift/dsh-java-ops",
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "spring-boot",
+    "java",
+    "sql"
+  ]
 }
