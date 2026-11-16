@@ -93,7 +93,7 @@ Agent 侧通过工具操作，人看面板：
 
 - 状态文件：`~/.dsh/profiles/<profile>/plugin-data/java-ops.json`
   结构：`{ workspaces: { [root]: { services, buildEnabled, sqlPerms } }, seq, sqlConnections, sqlLog }`
-- 权限与构建开关按工作区各存一套；数据库连接全局共用。
+- 服务、数据库连接、SQL 执行记录、权限与构建开关都按工作区各存一套。
 - 数据库密码：DSH credentials，ref 形如 `JAVA_OPS_SQL_<ID>`，不落 JSON、不回显。
 - SQL 权限模型：
 

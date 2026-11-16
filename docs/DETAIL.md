@@ -21,7 +21,7 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 
 - **服务**：左侧服务列表（运行中 / 启动中 / 构建中 / 已停止 / 已强杀 / 失败），右侧详情（端口、模块、启动类、PID、启动耗时、启动/停止/重启/构建、编辑、移除），详情下方分「运行日志 / 操作记录」两个 tab：运行日志是进程输出（过滤、自动换行默认关闭、自动滚动），操作记录按行列出 agent 对这个服务做过的扫描/构建/启动/停止/重启（时间 · 动作 · 结果 · 耗时）。运行日志右上角 ⤢ 把日志区铺满面板宽度，变成 ⤡ 点回；不再有整页全屏按钮。面板高度按视口自适应：取面板顶端到输入框上沿的空间，整页不再出现滚动条；日志与操作记录区固定占剩余高度，滚轮可翻但隐藏原生滚动条。`+ 添加服务` 打开对话框：扫描候选启动类勾选，或手输全限定类名并填端口。
 - **SQL**：只读的**执行记录**表格，五列 —— 时间、操作类型（取 SQL 首个关键字，或记录里的 `op`）、执行 SQL（单行省略，完整内容在记录里）、是否成功、影响条数。页面不提供执行入口——SQL 只由 Agent 工具 `java_ops_sql_query` 执行，这里记录每一次执行；无记录时显示空态说明。
-  - **数据库连接**：工具栏右侧 `+ 数据库连接` 打开对话框，字段为 类型（mysql / postgres）、名称、主机、端口、数据库、账号、密码。密码不落盘，交给 DSH credentials 服务，JSON 里只留 `passwordRef`（`JAVA_OPS_SQL_<ID>`）与 `hasPassword`；留空表示不修改。「测试」只探测端口可达（真正的登录校验需要连库）。连接是全局的，不按工作区分套。
+  - **数据库连接**：工具栏右侧 `+ 数据库连接` 打开对话框，字段为 类型（mysql / postgres）、名称、主机、端口、数据库、账号、密码。密码不落盘，交给 DSH credentials 服务，JSON 里只留 `passwordRef`（`JAVA_OPS_SQL_<工作区哈希>_<ID>`）与 `hasPassword`；留空表示不修改。「测试」只探测端口可达（真正的登录校验需要连库）。连接与执行记录都按工作区各存一套（旧版本存成全局的，读取时自动复制进各工作区）。
   - **执行记录保留**：`sqlLog` 落盘到 `plugin-data/java-ops.json`，按时间保留 3 天（`SQL_LOG_DAYS = 3`，读取时过滤、写入时清理），另有 2000 条上限防失控；插件重载/重启后历史仍在。
   - **确认链路**：`ctx.userQuestions.ask` 必须带上调用方 `agent`（`act`/`performAction` 逐层透传 `exec.agent`），否则报 `no user-questions answerer accepted the request`；用 `intent: { kind: 'approval' }` 时 `options` 里必须出现 approve/reject 的同名 label，否则 DSH 直接驳回询问。确认结果写进记录字段 `confirmed`（如 `"执行"`），审计时一眼看出这次是人工放行的。
   - **驱动策略**：内置纯 JS 驱动（mysql2；pg 待接入），Oracle / SQLServer / 达梦 / 金仓等走 JDBC 桥拿项目 `~/.m2` 里的 jar —— 不做运行时下载驱动。执行超时 10s、单次最多 500 行、一次只允许一条语句；`sqlPerms` 按 读/写/删 分组拦截，开了「高风险提示」就弹 DSH 原生确认框，UPDATE/DELETE 不带 WHERE 一律拦下。
