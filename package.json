@@ -1,6 +1,6 @@
 {
   "name": "@gsnowdrift/dsh-java-ops",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Java 服务运行面板：在会话里管理 Spring Boot 服务的启停、重启、构建与 SQL 查询。",
   "exports": {
