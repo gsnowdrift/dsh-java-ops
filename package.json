@@ -1,0 +1,37 @@
+{
+  "name": "@gsnowdrift/dsh-java-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Java 服务运行面板：在会话里管理 Spring Boot 服务的启停、重启、构建与 SQL 查询。",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib",
+    "locale",
+    "docs",
+    "cordis.patch.yml",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    },
+    "manifestVersion": 1
+  },
+  "dependencies": {
+    "mysql2": "^3.24.6"
+  }
+}

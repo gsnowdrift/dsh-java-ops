@@ -1,0 +1,80 @@
+# dsh-java-ops
+
+本地服务运行面板。服务页已接真实进程（扫描 / 添加 / 构建 / 启动 / 停止 / 重启 / 日志）；设置页的构建开关与 SQL 授权已真实落盘；SQL 页仍是只读的执行记录。
+
+## 入口
+
+会话内 View tab，显示名「运行服务」。注册在 `conversation.view` 槽：
+
+```js
+ctx.slots.inject('conversation.view', () => ctx.slots.register({
+  name: 'conversation.view',
+  id: 'java-ops',
+  order: 40,
+  label: () => txt('view'),
+}, View))
+```
+
+现有占用顺序：WC/chat 0、WC/trajectory 10、dsh-context/context 20、dsh-context/fleet 30，因此本插件排在最后。
+
+## 三个页签
+
+- **服务**：左侧服务列表（运行中 / 启动中 / 构建中 / 已停止 / 已强杀 / 失败），右侧详情（端口、模块、启动类、PID、启动耗时、启动/停止/重启/构建、编辑、移除），详情下方分「运行日志 / 操作记录」两个 tab：运行日志是进程输出（过滤、自动换行默认关闭、自动滚动），操作记录按行列出 agent 对这个服务做过的扫描/构建/启动/停止/重启（时间 · 动作 · 结果 · 耗时）。运行日志右上角 ⤢ 把日志区铺满面板宽度，变成 ⤡ 点回；不再有整页全屏按钮。面板高度按视口自适应：取面板顶端到输入框上沿的空间，整页不再出现滚动条；日志与操作记录区固定占剩余高度，滚轮可翻但隐藏原生滚动条。`+ 添加服务` 打开对话框：扫描候选启动类勾选，或手输全限定类名并填端口。
+- **SQL**：只读的**执行记录**表格，五列 —— 时间、操作类型（取 SQL 首个关键字，或记录里的 `op`）、执行 SQL（单行省略，完整内容在记录里）、是否成功、影响条数。页面不提供执行入口——SQL 只由 Agent 工具 `java_ops_sql_query` 执行，这里记录每一次执行；无记录时显示空态说明。
+  - **数据库连接**：工具栏右侧 `+ 数据库连接` 打开对话框，字段为 类型（mysql / postgres）、名称、主机、端口、数据库、账号、密码。密码不落盘，交给 DSH credentials 服务，JSON 里只留 `passwordRef`（`JAVA_OPS_SQL_<ID>`）与 `hasPassword`；留空表示不修改。「测试」只探测端口可达（真正的登录校验需要连库）。连接是全局的，不按工作区分套。
+  - **执行记录保留**：`sqlLog` 落盘到 `plugin-data/java-ops.json`，按时间保留 3 天（`SQL_LOG_DAYS = 3`，读取时过滤、写入时清理），另有 2000 条上限防失控；插件重载/重启后历史仍在。
+  - **确认链路**：`ctx.userQuestions.ask` 必须带上调用方 `agent`（`act`/`performAction` 逐层透传 `exec.agent`），否则报 `no user-questions answerer accepted the request`；用 `intent: { kind: 'approval' }` 时 `options` 里必须出现 approve/reject 的同名 label，否则 DSH 直接驳回询问。确认结果写进记录字段 `confirmed`（如 `"执行"`），审计时一眼看出这次是人工放行的。
+  - **驱动策略**：内置纯 JS 驱动（mysql2；pg 待接入），Oracle / SQLServer / 达梦 / 金仓等走 JDBC 桥拿项目 `~/.m2` 里的 jar —— 不做运行时下载驱动。执行超时 10s、单次最多 500 行、一次只允许一条语句；`sqlPerms` 按 读/写/删 分组拦截，开了「高风险提示」就弹 DSH 原生确认框，UPDATE/DELETE 不带 WHERE 一律拦下。
+- **设置**：启动前自动构建（真实生效，写 `buildEnabled`）；**SQL 授权**三组 —— 读（SELECT）、写（INSERT / UPDATE / ALTER / CREATE…）、删（DELETE / DROP / TRUNCATE…），每组两个开关：「允许执行」与「高风险提示」。未允许 = 执行时直接拒绝；允许 + 勾选高风险提示 = 每次执行先弹窗确认；允许但未勾选 = 直接执行。关掉「允许」时「高风险提示」自动置灰并清空。改动即时落盘到工作区状态，刷新后保留。
+
+设置作用域是**工作区**：服务、连接、权限、构建开关各存一套，切换工作区整套切换。顶栏只显示「工作区 · 跟随当前会话」，不提供跨项目下拉。
+
+## 服务链路（Host 侧）
+
+- **发现**：扫描工作区 `.java` 源文件，跳过 `node_modules/target/build/.git/out/.gradle`；命中 `@SpringBootApplication` / `@EnableAutoConfiguration`；启动类归属最近的 `pom.xml` / `build.gradle` 模块；读该模块 `src/main/resources/application*.{yml,yaml,properties}` 取 `server.port`、`context-path`、`profiles.active`。
+- **构建**：优先项目自带 `mvnw.cmd`，其次复用 IDE 捆绑的 Maven（直接经 plexus launcher 启动，避开带空格的 `mvn.cmd` 路径），最后才是 PATH 上的 maven。一次 Maven 调用同时完成编译与 classpath 解析：`mvn -q -B -pl <module> -am -DskipTests compile dependency:build-classpath -Dmdep.outputFile=<module>/target/java-ops-classpath.txt -Dmdep.includeScope=runtime`（不需要 `install`）。源文件与 pom 的 mtime 未变且 classpath 已生成时直接跳过构建；失败取 `[ERROR] ... .java:[line]` 前 8 行，无 `[ERROR]` 时给最后 12 行非空输出。
+- **启动**：把 JVM 参数、classpath、主类写进 `<profile>/plugin-data/run-<id>.args`，用 `java @argfile` 启动（classpath 动辄上万字符，直接 `-cp` 会 ENAMETOOLONG）。端口就绪轮询 120s，400ms 一次 TCP 探测。
+- **停止**：先 POST `http://127.0.0.1:<port><contextPath>/actuator/shutdown`（再试无 contextPath 的），端点可用时走 Spring 的优雅停机并给 30s 收尾；端点不存在（示例项目默认没暴露 actuator）则直接 `terminate()`。强制路径超时标记 `killed`。退出码非 0 记 `failed` + `lastError`，主动停止不算失败。
+- **VM 参数**：添加/编辑对话框都有「VM 参数」多行输入，随 `java @argfile` 一起下发；想启用优雅停机可在里面加 `-Dmanagement.endpoints.web.exposure.include=shutdown -Dmanagement.endpoint.shutdown.enabled=true`（需要应用带 actuator 依赖）。
+- **日志**：构建与运行共用同一条日志流，命令输出每 400ms 增量抽取（构建期间也能看到 mvn 输出）；保留最近 5000 行。每次启动/重启先把缓冲区清空并自增 `logEpoch`，面板发现 epoch 变化就丢弃旧日志重拉，保证看到的永远是本次运行的日志。展示按终端风格着色，配色可在日志标题栏右侧切换并记住选择（`localStorage`）：跟随主题（默认，跟面板同底）、护眼米色（Solarized Light）、石墨深灰、午夜黑。时间戳压暗、`INFO/WARN/ERROR/DEBUG` 分级上色，`*Exception`/`*Error` 与 `Caused by:` 标红，错误行与警告行整行带淡色底。
+- **状态机**：`stopped | building | starting | running | failed | killed`；单独点「构建」时状态先切 `building`，结束后回到原状态（原来会一直停在构建中）。运行态只存在内存，DSH 重启后需要重新启动。
+- **持久化**：`<profile>/plugin-data/java-ops.json`，结构 `{ workspaces: { [root]: { services, buildEnabled } }, seq }`。
+- **按需登记**：`start` / `stop` / `restart` / `build` 除了 `id` 也接受 `mainClass`。未登记的主类先用本次扫描补全 moduleDir / 端口 / context-path，再落盘并执行——agent 只要知道启动类就能用，不必先手工添加。
+- **操作流水**：每次 `act()` 记一条 `{at, action, id, status, ms}`（进行中 → 成功/失败），最多留 40 条；随 `/api/java-ops/state` 下发，面板详情页「操作记录」tab 按服务过滤后倒序显示。
+- **单实例**：一个服务同时只允许一条启动流水线（`runtime.pipeline`）。重复 `start` 不会起第二个 JVM，而是并入正在跑的那条；返回 `already: true`。
+- **等待就绪**：`start` / `restart` / `ensure` / `build` 默认 `wait: true`，工具调用会一直等到端口可连（或失败）才返回，agent 拿到成功即是能访问。面板按钮传 `wait: false`，保持异步靠轮询。就绪轮询期间每轮扫最近 300 行日志，发现 `APPLICATION FAILED TO START` / `Web server failed to start` / `BUILD FAILURE` 立刻失败并把这行写进 `lastError`，不干等到 120s 超时。
+- **热重载接管**：插件 dispose 只停止日志泵，不再 terminate Java 进程。重新加载后 `adoptRunning` 用登记的 pid + `netstat` 端口比对，把还在监听的服务恢复成 running（日志会注明 earlier log lines are gone）；此时 `stop` 走 `taskkill /PID`（先不带 `/F`，失败再强杀）。
+
+- **构建错误**：失败时除 `lastError` 文本外，还把 mvn 输出里的 `[ERROR] Foo.java:[12,34] 原因` 解析成 `buildErrors: [{file, line, column, message}]`（最多 50 条，去重），agent 可直接定位到文件行。
+- **日志过滤**：`java_ops_service_status` 支持 `grep`（不区分大小写的正则，非法正则按字面量匹配）、`level`（如 `ERROR`）、`tail`（上限 400）；命中时忽略 offset 返回匹配行数与行内容，未命中时按 400 行分页取尾部。
+
+## 工具
+
+`java_ops_project_scan`、`java_ops_service_list`、`java_ops_service_add`、`java_ops_service_remove`、`java_ops_service_start`、`java_ops_service_ensure`、`java_ops_service_stop`、`java_ops_service_restart`、`java_ops_service_status`、`java_ops_build`。全部走同一 `act()` 实现，与面板共用。工作区解析顺序：显式 `workspace` → 会话 cwd → 最后一个已有服务的根目录（所以在元工作区里调用也不会扫错目录）。`ensure` 是幂等入口：已在运行直接返回，否则启动并等到就绪。
+
+面板通道：`GET /api/java-ops/state?session=<id>`、`POST /api/java-ops/action`（`{session, action, payload}`），注册在 `ctx.connection.fetch`。
+
+PID 来源：`ctx.subprocess` 的句柄在 Windows 上不一定给出 pid，服务就绪后用 `netstat -ano` 找拥有该监听端口的进程号，实测 8801 → `PID 29340`（`tasklist` 核对为 `java.exe`）。
+
+## 约定
+
+- 样式只用 DSH theme token（`--dsw-alias-*`），不写死颜色，跟随明暗主题。
+- 页面渲染为槽内 React 组件，不用 iframe，不触碰 app root 与 `document.body`。
+- 文案经 locale 服务读取，`label` 用 thunk，切换语言即刷新。
+
+## 已验证（2026-11-15，示例项目 Order 服务）
+
+`java_ops_project_scan` 扫出 6 个启动类，端口与 context-path 与 `application.yml` 一致。Order 实测：构建通过 → `Started OrderApplication in 29.673 seconds` → `Tomcat started on port 8801`、Nacos 注册成功 → 停止后 PID 消失、8801 释放 → 重启后新 PID 再次监听 8801。日志经 `/api/java-ops/state` 按 offset 增量拉取，单次实测 1000+ 行。按需登记同一轮验证：只传 `mainClass: com.example.demo.sync.DataSyncApplication` 即自动登记 svc-2、构建 5.5s、启动到消息消费者订阅完成，停止耗时 92ms；活动流水记录 start → stop，id 自动解析成 svc-2。构建状态修复后实测：单独点构建 svc-2 返回 `building`，5s 后回到 `stopped`，日志里能看到 mvn 输出；重启 svc-2 时 `epoch` 由 0 变 1、日志只剩本次运行内容。
+
+## 已验证（2026-11-16 第二轮，本机 Nacos 不可达）
+
+- 单实例：连续两次 `java_ops_service_start {id:'svc-2', wait:false}`，第二次 1ms 返回 `already: true`，没有第二条流水线。
+- 等待就绪：`java_ops_service_ensure {id:'svc-1'}` 阻塞到超时才返回（活动记录 `ensure ms: 141406` = 构建 21.2s + 就绪 120s），`lastError: "port 8801 not ready in time"`。失败原因是环境：Nacos 连不上，Order 卡在 Dubbo 注册重试，8801 始终不监听。
+- 构建错误结构化：临时登记 `svc-3`（moduleDir `no-such-module`）构建，1.85s 返回 `failed: true` 并给出 3 条 `buildErrors`，首条 `Could not find the selected project in the reactor: no-such-module @`；验证后已移除该服务。
+- 日志过滤：`service_status` 带 `grep: 'ERROR|APPLICATION FAILED|...'`、`tail: 40` 返回 `matched: 187, filtered: true`，只回 40 行。
+- 热重载：先记下 `tasklist` 的 java 进程，`plugin_manager set_plugin` false → true 后同一批进程仍在（没有 terminate）。
+- 未验证：`adoptRunning` 需要服务真正监听端口才有 pid 可比对，本机因 Nacos 不可用暂时无法端到端确认。
+
+## 尚未实现
+
+SQL 执行已接通 MySQL（连接配置 + 读写删授权 + 无 WHERE 拦截 + 确认弹窗 + 记录落 `sqlLog`）；仍待补：PostgreSQL 适配器、JDBC 桥（Oracle / SQLServer / 达梦 / 金仓）、Gradle 构建、DDL、表结构浏览、结果集分页与取消。见 `docs/decision-map.md`。

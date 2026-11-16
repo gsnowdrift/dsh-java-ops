@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Java ops",
+    "description": "Manage Spring Boot services and run SQL from the conversation.",
+    "detail": "A local replacement for idea-mcp: scan the workspace for Spring Boot entry points, drive the service lifecycle (start / graceful stop / kill / restart / build), and run SQL with schema browsing in the same place. This build is a UI prototype with demo data."
+  }
+}

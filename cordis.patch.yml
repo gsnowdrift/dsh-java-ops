@@ -1,0 +1,4 @@
+# Contribution layer for @gsnowdrift/dsh-java-ops.
+- insert:
+    - id: dsh-java-ops
+      name: '@gsnowdrift/dsh-java-ops'
