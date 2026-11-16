@@ -1,17 +1,18 @@
 package javaops.probe;
 
+import java.util.Locale;
 
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 
 /**
- * Prints a marker line when Spring Boot has finished starting (or has failed), so the launcher
- * knows the moment instead of guessing from log patterns.
+ * Prints a marker line when the Spring Boot application really starts serving, and when it
+ * fails, so the launcher knows the exact moment instead of guessing from log patterns.
  *
  * Registered through META-INF/spring.factories, which SpringApplication loads before the context
- * exists, so this listener sees both ApplicationReadyEvent and ApplicationFailedEvent. Compiled
- * against spring-context 5.3 for the interface only: the type is binary compatible with 4.x
- * through 6.x, and nothing else from Spring is referenced.
+ * exists, so this listener sees every lifecycle event. Compiled against spring-context 5.3 for the
+ * interface only: the type is binary compatible with 4.x through 6.x, and nothing else from Spring
+ * is referenced - the event classes and the web server are read through reflection.
  */
 public final class StartupListener implements ApplicationListener<ApplicationEvent> {
 
@@ -19,24 +20,28 @@ public final class StartupListener implements ApplicationListener<ApplicationEve
     private static final String FAILED = "org.springframework.boot.context.event.ApplicationFailedEvent";
     private static final String PREFIX = "[java-ops-probe]";
 
-    // the same event reaches us as a SpringApplication listener and as a context listener,
-    // and each context publishes its own; dedupe on type + context so a later failure still prints
+    // the failure event can arrive from several contexts; the first one carries the cause
     private static volatile boolean failedReported;
 
     @Override
     public void onApplicationEvent(ApplicationEvent event) {
         String type = event.getClass().getName();
-        if (!READY.equals(type) && !FAILED.equals(type)) return;
         if (FAILED.equals(type)) {
-            // the failure event can arrive from several contexts; the first one carries the cause
             if (!failedReported) {
                 failedReported = true;
                 emit("failed " + reason(event));
             }
             return;
         }
-        if (!servingTraffic(event)) return;
-        emit("event ready pid=" + pid() + " ctx=" + contextId(event));
+        // servlet and reactive apps publish subclasses, so match on the suffix
+        if (type.endsWith("WebServerInitializedEvent")) {
+            int port = webServerPort(event);
+            if (port > 0) emit("listening port=" + port);
+            return;
+        }
+        if (READY.equals(type)) {
+            emit("event ready pid=" + pid() + " ctx=" + contextId(event));
+        }
     }
 
     private static void emit(String message) {
@@ -45,28 +50,21 @@ public final class StartupListener implements ApplicationListener<ApplicationEve
     }
 
     /**
-     * A Spring Cloud bootstrap context publishes ApplicationReadyEvent seconds before the web
-     * server exists. Web contexts therefore only count once their server object is present;
-     * contexts that are not web at all (batch jobs) cannot be checked and always count.
+     * WebServerInitializedEvent fires once the connector is bound, which is the first moment a
+     * request can be answered - exactly what "started" means for the caller. The port is inside
+     * the WebServer object, so it is read reflectively to stay version independent.
      */
-    private static boolean servingTraffic(ApplicationEvent event) {
+    private static int webServerPort(ApplicationEvent event) {
         try {
-            Object context = event.getClass().getMethod("getApplicationContext").invoke(event);
-            if (context == null) return true;
-            java.lang.reflect.Method server = null;
-            for (Class<?> type = context.getClass(); type != null && server == null; type = type.getSuperclass()) {
-                try {
-                    server = type.getMethod("getWebServer");
-                } catch (NoSuchMethodException ignored) {
-                    // not a servlet web context; keep walking up
-                }
-            }
-            if (server == null) return true;
-            return server.invoke(context) != null;
+            Object server = event.getClass().getMethod("getWebServer").invoke(event);
+            if (server == null) return -1;
+            Object port = server.getClass().getMethod("getPort").invoke(server);
+            return port instanceof Number ? ((Number) port).intValue() : -1;
         } catch (Throwable ignored) {
-            return true;
+            return -1;
         }
     }
+
     private static String contextId(ApplicationEvent event) {
         try {
             Object context = event.getClass().getMethod("getApplicationContext").invoke(event);
