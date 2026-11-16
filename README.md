@@ -64,7 +64,7 @@ plugin_manager set_plugin  target=include:dsh-java-ops  enabled=true
 | --- | --- |
 | 服务发现 | 扫描 `@SpringBootApplication` / `@EnableAutoConfiguration` / 带 `main` 的类，按最近 `pom.xml` / `build.gradle` 归属模块，从 `application*.yml` 读端口、`context-path`、profile |
 | 添加服务 | 下拉联想（输包名或类名即可筛）+ 手填全限定类名；端口、服务名、VM 参数、profile 均可改 |
-| 启停重启 | 启动前自动构建（可关）、等待就绪（最长 120s）、快速失败；同一服务单实例守卫，不同服务可并行；启动前校验端口，被占用时报出进程名与 PID，由调用方决定是否结束 |
+| 启停重启 | 启动前自动构建（可关）、等待就绪＝接口能回 HTTP（最长 120s），启动失败由内置探针的 Spring 事件直接报因；同一服务单实例守卫，不同服务可并行；启动前校验端口，被占用时报出进程名与 PID，由调用方决定是否结束 |
 | 停止 | 给进程发 Ctrl+C（SIGINT），Spring 优雅停机；30s 未退出才强杀 |
 | 构建 | `mvnw` / `gradlew` 优先，失败给 `file:line` 结构化错误 |
 | 日志 | 实时日志分级着色、搜索过滤、放大、Esc 退出；每次启动/重启清空上一轮 |
@@ -92,9 +92,9 @@ Agent 侧通过工具操作，人看面板：
 ## 数据安全
 
 - 状态文件：`~/.dsh/profiles/<profile>/plugin-data/java-ops.json`
-  结构：`{ workspaces: { [root]: { services, buildEnabled, sqlPerms } }, seq, sqlConnections, sqlLog }`
+  结构：`{ workspaces: { [root]: { services, buildEnabled, sqlPerms, sqlConnections, sqlLog } }, seq }`
 - 服务、数据库连接、SQL 执行记录、权限与构建开关都按工作区各存一套。
-- 数据库密码：DSH credentials，ref 形如 `JAVA_OPS_SQL_<ID>`，不落 JSON、不回显。
+- 数据库密码：DSH credentials，ref 形如 `JAVA_OPS_SQL_<工作区哈希>_<ID>`，不落 JSON、不回显。
 - SQL 权限模型：
 
 | 组 | 覆盖语句 | 默认 |
@@ -107,7 +107,8 @@ Agent 侧通过工具操作，人看面板：
 
 ## 限制
 
-- 只隔离进程，不做端口预检：两个服务配同一端口时，后启动的会失败（`port not ready in time`）。
+- 端口被占用时默认不抢占：工具返回 `blocked`、面板弹确认框，由调用方决定是否结束占用进程。
+- 启动探针只对 Spring Boot 生效；非 Spring 进程回退到端口 + `readyUrl` 探测。
 - Gradle 支持有限，构建主走 Maven wrapper / `mvn`。
 - 表结构浏览、DDL 专门界面、PG / Oracle / 达梦等驱动尚在计划中。
 
