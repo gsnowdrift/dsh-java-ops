@@ -34,11 +34,11 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 - **发现**：扫描工作区 `.java` 源文件，跳过 `node_modules/target/build/.git/out/.gradle`；命中 `@SpringBootApplication` / `@EnableAutoConfiguration`；启动类归属最近的 `pom.xml` / `build.gradle` 模块；读该模块 `src/main/resources/application*.{yml,yaml,properties}` 取 `server.port`、`context-path`、`profiles.active`。
 - **构建**：优先项目自带 `mvnw.cmd`，其次复用 IDE 捆绑的 Maven（直接经 plexus launcher 启动，避开带空格的 `mvn.cmd` 路径），最后才是 PATH 上的 maven。一次 Maven 调用同时完成编译与 classpath 解析：`mvn -q -B -pl <module> -am -DskipTests compile dependency:build-classpath -Dmdep.outputFile=<module>/target/java-ops-classpath.txt -Dmdep.includeScope=runtime`（不需要 `install`）。源文件与 pom 的 mtime 未变且 classpath 已生成时直接跳过构建；失败取 `[ERROR] ... .java:[line]` 前 8 行，无 `[ERROR]` 时给最后 12 行非空输出。
 - **启动**：把 JVM 参数、classpath、主类写进 `<profile>/plugin-data/run-<id>.args`，用 `java @argfile` 启动（classpath 动辄上万字符，直接 `-cp` 会 ENAMETOOLONG）。端口就绪轮询 120s，400ms 一次 TCP 探测。
-- **停止**：先 POST `http://127.0.0.1:<port><contextPath>/actuator/shutdown`（再试无 contextPath 的），端点可用时走 Spring 的优雅停机并给 30s 收尾；端点不存在（示例项目默认没暴露 actuator）则直接 `terminate()`。强制路径超时标记 `killed`。退出码非 0 记 `failed` + `lastError`，主动停止不算失败。
-- **VM 参数**：添加/编辑对话框都有「VM 参数」多行输入，随 `java @argfile` 一起下发；想启用优雅停机可在里面加 `-Dmanagement.endpoints.web.exposure.include=shutdown -Dmanagement.endpoint.shutdown.enabled=true`（需要应用带 actuator 依赖）。
+- **停止**：和 IDE 一样给进程发 Ctrl+C —— 服务跑在 `ctx.subprocess.spawnTerminal` 分配的真实终端里，停止时 `signalForeground('SIGINT')`，JVM 触发 shutdown hook、Spring 关上下文后自己退出，日志里会看到 `[java-ops] sent Ctrl+C; waiting for the app to shut itself down` 与 `Commencing graceful shutdown`。30s 内没退才 `terminate()` 强杀并标记 `killed`；终端不可用时退回 `terminate()`。不再请求 `/actuator/shutdown`，也不再需要任何开关。退出码非 0 记 `failed` + `lastError`，主动停止不算失败。
+- **VM 参数**：添加/编辑对话框都有「VM 参数」多行输入，随 `java @argfile` 一起下发。
 - **日志**：构建与运行共用同一条日志流，命令输出每 400ms 增量抽取（构建期间也能看到 mvn 输出）；保留最近 5000 行。每次启动/重启先把缓冲区清空并自增 `logEpoch`，面板发现 epoch 变化就丢弃旧日志重拉，保证看到的永远是本次运行的日志。展示按终端风格着色，配色可在日志标题栏右侧切换并记住选择（`localStorage`）：跟随主题（默认，跟面板同底）、护眼米色（Solarized Light）、石墨深灰、午夜黑。时间戳压暗、`INFO/WARN/ERROR/DEBUG` 分级上色，`*Exception`/`*Error` 与 `Caused by:` 标红，错误行与警告行整行带淡色底。
 - **状态机**：`stopped | building | starting | running | failed | killed`；单独点「构建」时状态先切 `building`，结束后回到原状态（原来会一直停在构建中）。运行态只存在内存，DSH 重启后需要重新启动。
-- **持久化**：`<profile>/plugin-data/java-ops.json`，结构 `{ workspaces: { [root]: { services, buildEnabled } }, seq }`。
+- **持久化**：`<profile>/plugin-data/java-ops.json`，结构 `{ workspaces: { [root]: { services, buildEnabled, sqlPerms, sqlConnections, sqlLog } }, seq }`。
 - **按需登记**：`start` / `stop` / `restart` / `build` 除了 `id` 也接受 `mainClass`。未登记的主类先用本次扫描补全 moduleDir / 端口 / context-path，再落盘并执行——agent 只要知道启动类就能用，不必先手工添加。
 - **操作流水**：每次 `act()` 记一条 `{at, action, id, status, ms}`（进行中 → 成功/失败），最多留 40 条；随 `/api/java-ops/state` 下发，面板详情页「操作记录」tab 按服务过滤后倒序显示。
 - **单实例**：一个服务同时只允许一条启动流水线（`runtime.pipeline`）。重复 `start` 不会起第二个 JVM，而是并入正在跑的那条；返回 `already: true`。
