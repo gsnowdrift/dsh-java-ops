@@ -45,6 +45,7 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 - **等待就绪**：`start` / `restart` / `ensure` / `build` 默认 `wait: true`，工具调用会一直等到端口可连（或失败）才返回，agent 拿到成功即是能访问。面板按钮传 `wait: false`，保持异步靠轮询。就绪轮询期间每轮扫最近 300 行日志，发现 `APPLICATION FAILED TO START` / `Web server failed to start` / `BUILD FAILURE` 立刻失败并把这行写进 `lastError`，不干等到 120s 超时。
 - **热重载接管**：插件 dispose 只停止日志泵，不再 terminate Java 进程。重新加载后 `adoptRunning` 用登记的 pid + `netstat` 端口比对，把还在监听的服务恢复成 running（日志会注明 earlier log lines are gone）；此时 `stop` 走 `taskkill /PID`（先不带 `/F`，失败再强杀）。
 - **端口接管**：`start` 之前先 `pidByPort` 查一次端口。已经被别的进程占着（重载前留下的运行、面板外手工起的实例）就直接把那个 pid 认领成 running，日志写 `port 8801 is already served by pid N; adopting that process instead of starting a duplicate JVM`，不再启动第二个 JVM —— 否则新实例只会因端口冲突在几秒内退出，看起来像「启动失败」。
+- **端口占用校验**：启动（以及重启、ensure）在动手前先查端口。占用者不是这个服务自己、也不是它自己记录的 pid 时，默认**不动手**：工具返回 `blocked: { port, pid, process, serviceId?, serviceName? }`，由 agent 决定要不要结束占用进程（`killOccupant: true` 才会先 `taskkill` 再等端口释放最多 10s，然后启动）；面板则在启动/重启前弹出「端口被占用」对话框，显示端口、进程名、PID（占用者是本工作区的其它服务时还会点名那个服务），用户点「关闭并启动」才执行同样的 kill。实测：`python -m http.server 8801` 占住端口时，`java_ops_service_start` 返回 `blocked` 且不起 JVM；带 `killOccupant: true` 后 python 被杀、8801 由新 JVM 接管。
 
 - **构建错误**：失败时除 `lastError` 文本外，还把 mvn 输出里的 `[ERROR] Foo.java:[12,34] 原因` 解析成 `buildErrors: [{file, line, column, message}]`（最多 50 条，去重），agent 可直接定位到文件行。
 - **日志过滤**：`java_ops_service_status` 支持 `grep`（不区分大小写的正则，非法正则按字面量匹配）、`level`（如 `ERROR`）、`tail`（上限 400）；命中时忽略 offset 返回匹配行数与行内容，未命中时按 400 行分页取尾部。

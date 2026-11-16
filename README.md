@@ -64,7 +64,7 @@ plugin_manager set_plugin  target=include:dsh-java-ops  enabled=true
 | --- | --- |
 | 服务发现 | 扫描 `@SpringBootApplication` / `@EnableAutoConfiguration` / 带 `main` 的类，按最近 `pom.xml` / `build.gradle` 归属模块，从 `application*.yml` 读端口、`context-path`、profile |
 | 添加服务 | 下拉联想（输包名或类名即可筛）+ 手填全限定类名；端口、服务名、VM 参数、profile 均可改 |
-| 启停重启 | 启动前自动构建（可关）、等待就绪（最长 120s）、快速失败；同一服务单实例守卫，不同服务可并行 |
+| 启停重启 | 启动前自动构建（可关）、等待就绪（最长 120s）、快速失败；同一服务单实例守卫，不同服务可并行；启动前校验端口，被占用时报出进程名与 PID，由调用方决定是否结束 |
 | 停止 | 给进程发 Ctrl+C（SIGINT），Spring 优雅停机；30s 未退出才强杀 |
 | 构建 | `mvnw` / `gradlew` 优先，失败给 `file:line` 结构化错误 |
 | 日志 | 实时日志分级着色、搜索过滤、放大、Esc 退出；每次启动/重启清空上一轮 |
