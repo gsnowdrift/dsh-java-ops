@@ -69,6 +69,7 @@ plugin_manager set_plugin  target=include:dsh-java-ops  enabled=true
 | 构建 | `mvnw` / `gradlew` 优先，失败给 `file:line` 结构化错误 |
 | 日志 | 实时日志分级着色、搜索过滤、放大、Esc 退出；每次启动/重启清空上一轮 |
 | SQL | 三组权限（读/写/删）+ 可选高风险确认、结果 500 行 / 10s 超时、执行记录留 3 天 |
+| 接口调用 | `java_ops_http_request` 发任意方法请求；面板「接口」页维护请求头预设（可按行启用/停用），调用自动带上；下部分列出时间、方法、URL、耗时、状态码，可点开看请求头、响应头与响应体 |
 | 凭据 | 数据库密码只进 DSH credentials，不落 JSON、不回显 |
 
 ## 工具
@@ -86,15 +87,17 @@ Agent 侧通过工具操作，人看面板：
 | `java_ops_build` | 只构建，返回结构化错误 |
 | `java_ops_sql_connections` | 列出数据库连接 |
 | `java_ops_sql_query` | 执行 SQL（受权限矩阵约束） |
+| `java_ops_http_request` | 发 HTTP 请求，自动套用面板保存的请求头，返回状态码、响应头与 64 KB 以内的响应体 |
 
 工具都接受可选的 `workspace`（项目根绝对路径）；不传时按「会话 cwd → 最近用过的项目根」解析。
 
 ## 数据安全
 
 - 状态文件：`~/.dsh/profiles/<profile>/plugin-data/java-ops.json`
-  结构：`{ workspaces: { [root]: { services, buildEnabled, sqlPerms, sqlConnections, sqlLog } }, seq }`
-- 服务、数据库连接、SQL 执行记录、权限与构建开关都按工作区各存一套。
+  结构：`{ workspaces: { [root]: { services, buildEnabled, sqlPerms, sqlConnections, sqlLog, httpHeaders, httpLog } }, seq }`
+- 服务、数据库连接、SQL 执行记录、接口请求头与调用记录、权限与构建开关都按工作区各存一套。
 - 数据库密码：DSH credentials，ref 形如 `JAVA_OPS_SQL_<工作区哈希>_<ID>`，不落 JSON、不回显。
+- 接口请求头按原样明文存在状态文件里（`Authorization` 这类也在内），只在本机、不上传；调用记录保留最近 100 条，每条响应体最多存 8 KB。
 - SQL 权限模型：
 
 | 组 | 覆盖语句 | 默认 |
@@ -110,6 +113,7 @@ Agent 侧通过工具操作，人看面板：
 - 端口被占用时默认不抢占：工具返回 `blocked`、面板弹确认框，由调用方决定是否结束占用进程。
 - 启动探针只对 Spring Boot 生效；非 Spring 进程回退到端口 + `readyUrl` 探测。
 - 探针 jar 被运行中的 JVM 打开时无法重建，改完 `probe/` 要先停掉使用它的服务再 `bash probe/build.sh`。
+- 接口调用没有独立的鉴权闸门：能调 `java_ops_http_request` 的 Agent 就能打到任意 URL，请求头预设不要放长期有效的生产密钥。
 - Gradle 支持有限，构建主走 Maven wrapper / `mvn`。
 - 表结构浏览、DDL 专门界面、PG / Oracle / 达梦等驱动尚在计划中。
 

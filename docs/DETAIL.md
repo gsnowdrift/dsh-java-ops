@@ -26,6 +26,7 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
   - **确认链路**：`ctx.userQuestions.ask` 必须带上调用方 `agent`（`act`/`performAction` 逐层透传 `exec.agent`），否则报 `no user-questions answerer accepted the request`；用 `intent: { kind: 'approval' }` 时 `options` 里必须出现 approve/reject 的同名 label，否则 DSH 直接驳回询问。确认结果写进记录字段 `confirmed`（如 `"执行"`），审计时一眼看出这次是人工放行的。
   - **驱动策略**：内置纯 JS 驱动（mysql2；pg 待接入），Oracle / SQLServer / 达梦 / 金仓等走 JDBC 桥拿项目 `~/.m2` 里的 jar —— 不做运行时下载驱动。执行超时 10s、单次最多 500 行、一次只允许一条语句；`sqlPerms` 按 读/写/删 分组拦截，开了「高风险提示」就弹 DSH 原生确认框，UPDATE/DELETE 不带 WHERE 一律拦下。
 - **设置**：启动前自动构建（真实生效，写 `buildEnabled`）；**SQL 授权**三组 —— 读（SELECT）、写（INSERT / UPDATE / ALTER / CREATE…）、删（DELETE / DROP / TRUNCATE…），每组两个开关：「允许执行」与「高风险提示」。未允许 = 执行时直接拒绝；允许 + 勾选高风险提示 = 每次执行先弹窗确认；允许但未勾选 = 直接执行。关掉「允许」时「高风险提示」自动置灰并清空。改动即时落盘到工作区状态，刷新后保留。
+- **接口**：上半部分是请求头预设表格（名称 / 值 / 启用 / 删除），可增删行并「保存请求头」；保存后 Agent 每次调 `java_ops_http_request` 都会自动套用这些头，Agent 自己传的同名头优先。下半部分是调用记录（时间、方法、URL、耗时、状态码、详情），最多 100 条，点「详情」弹出请求头、请求体、响应头、响应体。页面本身不发请求，只维护预设与展示记录。
 
 设置作用域是**工作区**：服务、连接、权限、构建开关各存一套，切换工作区整套切换。顶栏只显示「工作区 · 跟随当前会话」，不提供跨项目下拉。
 
@@ -38,7 +39,7 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 - **VM 参数**：添加/编辑对话框都有「VM 参数」多行输入，随 `java @argfile` 一起下发。
 - **日志**：构建与运行共用同一条日志流，命令输出每 400ms 增量抽取（构建期间也能看到 mvn 输出）；保留最近 5000 行。终端输出按 CRLF 切行，行尾 CR 会去掉，日志里不会留 `^M`。每次启动/重启先把缓冲区清空并自增 `logEpoch`，面板发现 epoch 变化就丢弃旧日志重拉，保证看到的永远是本次运行的日志。展示按终端风格着色，配色可在日志标题栏右侧切换并记住选择（`localStorage`）：跟随主题（默认，跟面板同底）、护眼米色（Solarized Light）、石墨深灰、午夜黑。时间戳压暗、`INFO/WARN/ERROR/DEBUG` 分级上色，`*Exception`/`*Error` 与 `Caused by:` 标红，错误行与警告行整行带淡色底。
 - **状态机**：`stopped | building | starting | running | failed | killed`；单独点「构建」时状态先切 `building`，结束后回到原状态（原来会一直停在构建中）。运行态只存在内存，DSH 重启后需要重新启动。
-- **持久化**：`<profile>/plugin-data/java-ops.json`，结构 `{ workspaces: { [root]: { services, buildEnabled, sqlPerms, sqlConnections, sqlLog } }, seq }`。
+- **持久化**：`<profile>/plugin-data/java-ops.json`，结构 `{ workspaces: { [root]: { services, buildEnabled, sqlPerms, sqlConnections, sqlLog, httpHeaders, httpLog } }, seq }`。
 - **按需登记**：`start` / `stop` / `restart` / `build` 除了 `id` 也接受 `mainClass`。未登记的主类先用本次扫描补全 moduleDir / 端口 / context-path，再落盘并执行——agent 只要知道启动类就能用，不必先手工添加。
 - **操作流水**：每次 `act()` 记一条 `{at, action, id, status, ms}`（进行中 → 成功/失败），最多留 40 条；随 `/api/java-ops/state` 下发，面板详情页「操作记录」tab 按服务过滤后倒序显示。
 - **单实例**：一个服务同时只允许一条启动流水线（`runtime.pipeline`）。重复 `start` 不会起第二个 JVM，而是并入正在跑的那条；返回 `already: true`。
@@ -50,10 +51,11 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 
 - **构建错误**：失败时除 `lastError` 文本外，还把 mvn 输出里的 `[ERROR] Foo.java:[12,34] 原因` 解析成 `buildErrors: [{file, line, column, message}]`（最多 50 条，去重），agent 可直接定位到文件行。
 - **日志过滤**：`java_ops_service_status` 支持 `grep`（不区分大小写的正则，非法正则按字面量匹配）、`level`（如 `ERROR`）、`tail`（上限 400）；命中时忽略 offset 返回匹配行数与行内容，未命中时按 400 行分页取尾部。
+- **接口调用**：`runHttpRequest` 先读工作区保存的 `httpHeaders`（跳过停用行与空名行），再用调用方 `headers` 覆盖同名项；非 GET/HEAD 才带 body，缺 `content-type` 时按 `application/json` 补。工具返回状态码、响应头（多值用 `, ` 合并）与最多 64 KB 的响应体；审计记录只存 8 KB 副本（`HTTP_LOG_BODY`），避免 100 条 × 64 KB 把状态文件和每秒的状态轮询撑爆，详情弹窗里看到的是这份副本。工具同时回显 `requestHeaders`（实际发出的头），便于确认保存的头已生效。失败时把 `fetch` 埋掉的真实原因一并写进 `error`（如 `fetch failed (ECONNREFUSED)`），并回传 method 与 url。仅用 Node 内置 `fetch` + `AbortSignal.timeout`（默认 15s），不引依赖。
 
 ## 工具
 
-`java_ops_project_scan`、`java_ops_service_list`、`java_ops_service_add`、`java_ops_service_remove`、`java_ops_service_start`、`java_ops_service_ensure`、`java_ops_service_stop`、`java_ops_service_restart`、`java_ops_service_status`、`java_ops_build`。全部走同一 `act()` 实现，与面板共用。工作区解析顺序：显式 `workspace` → 会话 cwd → 最后一个已有服务的根目录（所以在元工作区里调用也不会扫错目录）。`ensure` 是幂等入口：已在运行直接返回，否则启动并等到就绪。
+`java_ops_project_scan`、`java_ops_service_list`、`java_ops_service_add`、`java_ops_service_remove`、`java_ops_service_start`、`java_ops_service_ensure`、`java_ops_service_stop`、`java_ops_service_restart`、`java_ops_service_status`、`java_ops_build`、`java_ops_sql_connections`、`java_ops_sql_query`、`java_ops_http_request`。全部走同一 `act()` 实现，与面板共用。工作区解析顺序：显式 `workspace` → 会话 cwd → 最后一个已有服务的根目录（所以在元工作区里调用也不会扫错目录）。`ensure` 是幂等入口：已在运行直接返回，否则启动并等到就绪。
 
 面板通道：`GET /api/java-ops/state?session=<id>`、`POST /api/java-ops/action`（`{session, action, payload}`），注册在 `ctx.connection.fetch`。
 
@@ -78,6 +80,14 @@ PID 来源：`ctx.subprocess` 的句柄在 Windows 上不一定给出 pid，服�
 - 热重载：先记下 `tasklist` 的 java 进程，`plugin_manager set_plugin` false → true 后同一批进程仍在（没有 terminate）。
 - 未验证：`adoptRunning` 需要服务真正监听端口才有 pid 可比对，本机因 Nacos 不可用暂时无法端到端确认。
 
+## 已验证（2026-11-17，接口调用）
+
+- 保存的请求头会被自动套用：手工写入 `X-Java-Ops: probe-1`、`Accept: application/json` 与一条 `enabled: false` 的头，`java_ops_http_request` 的审计记录里 `reqHeaders` 正确带上前两条、跳过停用那条。
+- `GET http://127.0.0.1:<port>/` 打到本机临时静态服务：`status 200`、`ms 31`、响应头齐全、响应体完整返回（45 KB < 64 KB 上限）；同时审计记录里只留 8192 字节并标 `truncated: true`。
+- 打到没在监听的端口：`ok: false`、`ms 2`、`error: "fetch failed (ECONNREFUSED)"`，并回传 method 与 url。
+- 打到在跑的 Spring 服务根路径：`status 404`、`ms 62`、body 为应用自己的 `{"code":404,...}` —— 接口能回就说明通了。
+
+
 ## 尚未实现
 
-SQL 执行已接通 MySQL（连接配置 + 读写删授权 + 无 WHERE 拦截 + 确认弹窗 + 记录落 `sqlLog`）；仍待补：PostgreSQL 适配器、JDBC 桥（Oracle / SQLServer / 达梦 / 金仓）、Gradle 构建、DDL、表结构浏览、结果集分页与取消。见 `docs/decision-map.md`。
+SQL 执行已接通 MySQL（连接配置 + 读写删授权 + 无 WHERE 拦截 + 确认弹窗 + 记录落 `sqlLog`）；接口调用已接通（请求头预设 + 调用记录）。仍待补：PostgreSQL 适配器、JDBC 桥（Oracle / SQLServer / 达梦 / 金仓）、Gradle 构建、DDL、表结构浏览、结果集分页与取消。见 `docs/decision-map.md`。
