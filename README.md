@@ -1,6 +1,19 @@
-# dsh-java-ops
+<div align="center">
 
-> 在 DeepSeek Harness 里跑 Java / Spring Boot 服务、查数据库：面板点启停、Agent 调工具，日志与 SQL 都在同一个会话里。
+# Java Ops
+
+**DeepSeek Harness 插件：把 Java 服务的编译、启停、重启、调接口、读数据库交给 AI**
+
+改代码 → 构建 → 重启 → 调接口看结果 → 查库核对，这一圈以前得在 IDE、终端、Postman、数据库客户端之间来回切；
+现在 Agent 自己就能跑完，再回来告诉你结果。
+
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![npm](https://img.shields.io/npm/v/@gsnowdrift/dsh-java-ops)](https://www.npmjs.com/package/@gsnowdrift/dsh-java-ops) [![ci](https://img.shields.io/github/actions/workflow/status/gsnowdrift/dsh-java-ops/check.yml?branch=main&label=ci)](https://github.com/gsnowdrift/dsh-java-ops/actions/workflows/check.yml) [![stars](https://img.shields.io/github/stars/gsnowdrift/dsh-java-ops)](https://github.com/gsnowdrift/dsh-java-ops/stargazers) [![topic](https://img.shields.io/badge/dsh--plugin-listed-blueviolet)](https://github.com/topics/dsh-plugin)
+
+[安装](#安装) · [功能一览](#功能一览) · [特性](#特性) · [工具](#工具) · [数据安全](#数据安全) · [限制](#限制)
+
+![Java Ops 面板](docs/images/cover.png)
+
+</div>
 
 ## 安装
 
@@ -21,12 +34,6 @@ dsh plugin --profile web why @gsnowdrift/dsh-java-ops      # 看装的是哪个�
 dsh plugin --profile web add github:gsnowdrift/dsh-java-ops
 ```
 
-`--profile` 填你实际用的 profile 名（Web GUI 默认常用 `web`，也可能是 `desktop`）。装完重启 DSH，再启用：
-
-```
-plugin_manager set_plugin  target=include:dsh-java-ops  enabled=true
-```
-
 本机需要 JDK 与 Maven（或项目自带 `mvnw`）——构建和启动都靠它；插件自身依赖 `mysql2`（纯 JS，无原生编译），安装时自动装。
 
 本地开发用 link 方式：
@@ -44,21 +51,31 @@ plugin_manager set_plugin  target=include:dsh-java-ops  enabled=true
 
 > 改完 `lib/` 下的代码要热重载插件，并**刷新页面**——已加载的 client 模块不会自己重跑。
 
-## 截图
+## 功能一览
 
-**服务** —— 左侧服务列表，右侧详情、启动/停止/重启/构建按钮与实时日志：
+三个页签对应三件事：跑服务、验数据、定规矩。
+
+**服务** —— 左侧是扫描出来的启动类与端口，右侧是启动 / 停止 / 重启 / 构建按钮、PID 与启动耗时、实时日志（可过滤、可放大、按级别着色）：
 
 ![服务页](docs/images/services.png)
 
-**SQL** —— 执行记录（时间 / 操作类型 / 执行 SQL / 是否成功 / 影响条数）与连接切换：
+**SQL** —— 每条执行都留痕：时间、操作类型、SQL 原文、成功与否、影响条数，顶部可切数据库连接：
 
 ![SQL 执行记录](docs/images/sql.png)
 
-**设置** —— 启动前自动构建开关，SQL 三组权限与高风险提示：
+**设置** —— 启动前自动构建；SQL 的读 / 写 / 删三组独立授权，每组可再勾高风险提示：
 
 ![设置页](docs/images/settings.png)
 
 ## 特性
+
+五组能力，逐项细节见下面的表格：
+
+- **服务**：扫描发现、添加、启动、停止、重启、单独构建，含端口占用校验、单实例守卫、就绪判定与启动失败归因
+- **可观测**：实时日志（分级着色、过滤、放大）、操作记录、PID、启动与构建耗时
+- **接口验证**：任意方法 HTTP 请求，请求头可按工作区预设并自动带上，调用记录可回看请求头、响应头、响应体
+- **数据核对**：SQL 查询与增删改，读/写/删三组独立授权与高风险确认，执行记录保留 3 天
+- **工作区隔离**：服务、连接、权限、请求头、执行记录都按会话所在项目各存一套
 
 | 能力 | 说明 |
 | --- | --- |
