@@ -17,7 +17,7 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 
 现有占用顺序：WC/chat 0、WC/trajectory 10、dsh-context/context 20、dsh-context/fleet 30，因此本插件排在最后。
 
-## 三个页签
+## 四个页签
 
 - **服务**：左侧服务列表（运行中 / 启动中 / 构建中 / 已停止 / 已强杀 / 失败），右侧详情（端口、模块、启动类、PID、启动耗时、启动/停止/重启/构建、编辑、移除），详情下方分「运行日志 / 操作记录」两个 tab：运行日志是进程输出（过滤、自动换行默认关闭、自动滚动），操作记录按行列出 agent 对这个服务做过的扫描/构建/启动/停止/重启（时间 · 动作 · 结果 · 耗时）。运行日志右上角 ⤢ 把日志区铺满面板宽度，变成 ⤡ 点回；不再有整页全屏按钮。面板高度按视口自适应：取面板顶端到输入框上沿的空间，整页不再出现滚动条；日志与操作记录区固定占剩余高度，滚轮可翻但隐藏原生滚动条。`+ 添加服务` 打开对话框：扫描候选启动类勾选，或手输全限定类名并填端口。
 - **SQL**：只读的**执行记录**表格，五列 —— 时间、操作类型（取 SQL 首个关键字，或记录里的 `op`）、执行 SQL（单行省略，完整内容在记录里）、是否成功、影响条数。页面不提供执行入口——SQL 只由 Agent 工具 `java_ops_sql_query` 执行，这里记录每一次执行；无记录时显示空态说明。
@@ -26,9 +26,10 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
   - **确认链路**：开了「高风险提示」的分组，执行前调用 DSH 原生审批服务 `ctx.approval.request({ agent, toolName: 'java_ops_sql_query', callId, reason, displayReason })`，弹出的是和工具授权同一套的审批弹窗（允许一次 / 拒绝），弹窗正文就是这条 SQL 原文（`displayReason` 截断 400 字符），便于和工具授权区分。只有拿到 `allowed-once` 才执行，`rejected` / `cancelled` 直接记为拒绝。两个前提缺一不可：调用方 `agent` 必须逐层透传（`execute` 里记下 `exec.agent` 与 `exec.callId`），以及会话审批策略必须是「每次询问」——策略为「从不询问」时审批请求会被直接判否，表现为秒回「用户拒绝了这次 SQL 执行」。approval 服务不可用时退回 `ctx.userQuestions.ask`（带 `intent: { kind: 'approval', approve, reject }` 时 `options` 里必须有同名 label，否则报 `declares intent approval whose action label ... names none of its options`）。放行后记录字段 `confirmed` 写成 `approval`，审计时一眼看出这次是人工批准的。
   - **驱动策略**：内置纯 JS 驱动（mysql2；pg 待接入），Oracle / SQLServer / 达梦 / 金仓等走 JDBC 桥拿项目 `~/.m2` 里的 jar —— 不做运行时下载驱动。执行超时 10s、单次最多 500 行、一次只允许一条语句；`sqlPerms` 按 读/写/删 分组拦截，开了「高风险提示」就弹 DSH 原生确认框，UPDATE/DELETE 不带 WHERE 一律拦下。
 - **设置**：启动前自动构建（真实生效，写 `buildEnabled`）；**SQL 授权**三组 —— 读（SELECT）、写（INSERT / UPDATE / ALTER / CREATE…）、删（DELETE / DROP / TRUNCATE…），每组两个开关：「允许执行」与「高风险提示」。未允许 = 执行时直接拒绝；允许 + 勾选高风险提示 = 每次执行先弹窗确认；允许但未勾选 = 直接执行。关掉「允许」时「高风险提示」自动置灰并清空。改动即时落盘到工作区状态，刷新后保留。
+- **设置 · Java 代码校验**：三张卡片（Checkstyle / PMD / SpotBugs），开关打开即启用；未安装时自动从 GitHub Releases 下载对应版本（下到同目录 `.tmp`，校验文件头后原子 rename），版本胶囊显示已装版本，点「检查更新」查最新版；规则集可选内置（Google / Sun、标准 / 严格、默认 / 严格）、项目自带（`checkstyle.xml` / `pmd-ruleset.xml` / `exclude-filter.xml`）或外部文件；Checkstyle 有「命中阈值」（warn / error / all），PMD 有「重复代码检查」。SpotBugs 需要编译产物，启用时强制打开「启动前自动构建」并锁住开关。卡片里的「运行检查」跑一遍已启用的检查器，结果摘要显示条数与耗时，明细看 `state.lint.lastRun`。
 - **接口**：上半部分是请求头预设表格（名称 / 值 / 启用 / 删除），可增删行并「保存请求头」；保存后 Agent 每次调 `java_ops_http_request` 都会自动套用这些头，Agent 自己传的同名头优先。下半部分是调用记录（时间、方法、URL、耗时、状态码、详情），最多 100 条，点「详情」弹出请求头、请求体、响应头、响应体。页面本身不发请求，只维护预设与展示记录。
 
-设置作用域是**工作区**：服务、连接、权限、构建开关各存一套，切换工作区整套切换。顶栏只显示「工作区 · 跟随当前会话」，不提供跨项目下拉。
+设置作用域是**工作区**：服务、连接、权限、构建开关、校验规则各存一套，切换工作区整套切换。顶栏只显示「工作区 · 跟随当前会话」，不提供跨项目下拉。
 
 ## 服务链路（Host 侧）
 
@@ -87,6 +88,13 @@ PID 来源：`ctx.subprocess` 的句柄在 Windows 上不一定给出 pid，服�
 - 打到没在监听的端口：`ok: false`、`ms 2`、`error: "fetch failed (ECONNREFUSED)"`，并回传 method 与 url。
 - 打到在跑的 Spring 服务根路径：`status 404`、`ms 62`、body 为应用自己的 `{"code":404,...}` —— 接口能回就说明通了。
 
+
+## 已验证（2026-11-18，Java 代码校验）
+
+- Checkstyle 14.4.0 从 GitHub Releases 下载成功（15 225 265 字节，`java -jar … --version` 输出 `Checkstyle version: 14.4.0`）；本机 30 KB/s 级带宽下耗时约 8 分钟。
+- `action=run tool=checkstyle`（规则集 google、阈值 warn）在示例项目上跑通：`ms 10 585`、`count 2236`，findings 解析出中文消息与规则名（`Indentation` / `LineLength` / `SummaryJavadoc` / `TodoFormat` / `AbbreviationAsWordInName` / `GoogleMethodName`）。
+- 阈值语义：`warn` 保留 warning 及以上，`error` 只留 error，`all` 全留；Google / Sun 规则集默认输出 `[WARNING]`，选 `error` 会得到 0 条。
+- PMD（约 60 MB）与 SpotBugs（约 30 MB）尚未在本机实测下载与执行。
 
 ## 尚未实现
 
