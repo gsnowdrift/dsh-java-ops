@@ -96,6 +96,17 @@ PID 来源：`ctx.subprocess` 的句柄在 Windows 上不一定给出 pid，服�
 - 阈值语义：`warn` 保留 warning 及以上，`error` 只留 error，`all` 全留；Google / Sun 规则集默认输出 `[WARNING]`，选 `error` 会得到 0 条。
 - PMD（约 60 MB）与 SpotBugs（约 30 MB）尚未在本机实测下载与执行。
 
+## 自动触发（2026-11-21）
+
+三个检查器各挂一个钩子，不需要手动跑：
+
+- **Checkstyle — 改完马上跑**：`tools/post-execute` 钩子识别所有写文件工具（`write` / `edit` / `str_replace_editor` / `insert` 等）写入 `.java` 的动作，跑一次 Checkstyle 并把 findings 追加到该次编辑结果里（`str_replace_editor` 的 `view` 命令不算编辑）。
+- **PMD — 每轮结束**：本轮改过 Java 文件时，`agent/turn-stopping` 触发一次 PMD；结果写进 `state.lint.lastRun`，面板与 `java_ops_lint {action:"run"}` 可查看。钩子 fire-and-forget，不会拖慢收尾。
+- **SpotBugs — 提交前门禁**：`tools/pre-execute` 检测到 shell 工具执行 `git commit` 时跑一次 SpotBugs；有 findings 或检查器报错就 `deny` 这次提交（理由里列出前 8 条），修完或到面板关掉 SpotBugs 再重试。只有拼写得出的 `git commit` 会被拦（`script_path` 里藏的提交看不到）；检查器未启用/未安装/无源码目录时不拦。
+
+这是唯一一处「强制」：未通过不让提交。其余两个只报告不阻断。
+
+
 ## 尚未实现
 
 SQL 执行已接通 MySQL（连接配置 + 读写删授权 + 无 WHERE 拦截 + 确认弹窗 + 记录落 `sqlLog`）；接口调用已接通（请求头预设 + 调用记录）。仍待补：PostgreSQL 适配器、JDBC 桥（Oracle / SQLServer / 达梦 / 金仓）、Gradle 构建、DDL、表结构浏览、结果集分页与取消。见 `docs/decision-map.md`。
