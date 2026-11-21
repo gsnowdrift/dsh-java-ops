@@ -53,7 +53,7 @@ dsh plugin --profile web add github:gsnowdrift/dsh-java-ops
 
 ## 功能一览
 
-三个页签对应三件事：跑服务、验数据、定规矩。
+四个页签对应四件事：跑服务、验数据、验接口、定规矩。
 
 **服务** —— 左侧是扫描出来的启动类与端口，右侧是启动 / 停止 / 重启 / 构建按钮、PID 与启动耗时、实时日志（可过滤、可放大、按级别着色）：
 
@@ -63,7 +63,7 @@ dsh plugin --profile web add github:gsnowdrift/dsh-java-ops
 
 ![SQL 执行记录](docs/images/sql.png)
 
-**设置** —— 启动前自动构建；SQL 的读 / 写 / 删三组独立授权，每组可再勾高风险提示：
+**设置** —— 启动前自动构建；Java 代码校验（Checkstyle / PMD / SpotBugs，首次启用自动下载）；SQL 的读 / 写 / 删三组独立授权，每组可再勾高风险提示：
 
 ![设置页](docs/images/settings.png)
 
@@ -105,6 +105,7 @@ Agent 侧通过工具操作，人看面板：
 | `java_ops_sql_connections` | 列出数据库连接 |
 | `java_ops_sql_query` | 执行 SQL（受权限矩阵约束） |
 | `java_ops_http_request` | 发 HTTP 请求，自动套用面板保存的请求头，返回状态码、响应头与 64 KB 以内的响应体 |
+| `java_ops_lint` | 列出 / 安装 / 检查更新 / 启停 Java 代码校验器，`action=run` 跑一遍已启用的检查 |
 
 工具都接受可选的 `workspace`（项目根绝对路径）；不传时按「会话 cwd → 最近用过的项目根」解析。
 
