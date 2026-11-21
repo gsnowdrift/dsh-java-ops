@@ -33,4 +33,7 @@ jobs:
         run: npm pack --dry-run
 
       - name: publish
-        run: npm publish --access public
+        # A prerelease version (0.3.0-rc.1) goes to its own dist-tag, never `latest`.
+        run: |
+          TAG=$(node -p "const p=require('./package.json').version.split('-')[1]; p ? p.split('.')[0] : 'latest'")
+          npm publish --access public --tag "$TAG"
