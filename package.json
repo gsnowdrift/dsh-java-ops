@@ -1,6 +1,6 @@
 {
   "name": "@gsnowdrift/dsh-java-ops",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "type": "module",
   "description": "赋予 AI 编译、启停、重启 Java / Spring Boot 服务的能力，并让它自己发 HTTP 请求测接口、用 SQL 读数据验结果——改代码到验证的闭环都在会话里完成。",
   "exports": {
