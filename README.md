@@ -87,7 +87,7 @@ dsh plugin --profile web add github:gsnowdrift/dsh-java-ops
 | 日志 | 实时日志分级着色、搜索过滤、放大、Esc 退出；每次启动/重启清空上一轮 |
 | SQL | 三组权限（读/写/删）+ 可选高风险确认、结果 500 行 / 10s 超时、执行记录留 3 天 |
 | 接口调用 | `java_ops_http_request` 发任意方法请求；面板「接口」页维护请求头预设（可按行启用/停用），调用自动带上；下部分列出时间、方法、URL、耗时、状态码，可点开看请求头、响应头与响应体 |
-| Java 代码校验 | Checkstyle 改完 Java 文件自动跑并把结果附到编辑结果；PMD 本轮结束自动跑；SpotBugs 在 `git commit` 前做门禁（有发现就拦，可在面板关掉） |
+| Java 代码校验 | Checkstyle 改完 Java 文件自动跑并把结果附到编辑结果；PMD 本轮结束自动跑；SpotBugs 在 `git commit` 前做门禁（只扫本次提交涉及的类，有发现就拦，可在面板关掉） |
 
 | 凭据 | 数据库密码只进 DSH credentials，不落 JSON、不回显 |
 
