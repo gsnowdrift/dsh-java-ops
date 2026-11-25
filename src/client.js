@@ -161,6 +161,24 @@ const TEXT = {
     proxySaved: '已保存',
     proxyInvalid: '代理地址格式不对',
     settingsBuildHint: '源码没变时自动跳过构建。',
+    mavenTitle: '构建环境',
+    mavenHome: 'Maven 目录',
+    mavenHomeHint: '构建只用这里选的 Maven，不回落项目 mvnw / IDE / PATH。必须能读出版本号才会保存。',
+    mavenSettings: 'settings.xml',
+    mavenSettingsHint: '留空用 Maven 默认配置；内网私服一般要在这里配镜像。',
+    mavenNone: '未设置，构建会直接失败',
+    mavenSettingsOn: '已启用',
+    mavenVersionBad: '识别不到版本号，未保存',
+    mavenPick: '选择…',
+    mavenClear: '清除',
+    mavenUnset: '未选择',
+    browseDirTitle: '选择 Maven 目录',
+    browseFileTitle: '选择 settings.xml',
+    browseEmpty: '这个目录里没有可选项',
+    browseFail: '读不到这个目录',
+    browseDrives: '此电脑',
+    browsePick: '选择',
+    browsePickHere: '选择此目录',
     settingsData: '数据目录',
     settingsPerms: 'SQL 操作授权',
     permAllow: '允许执行',
@@ -395,6 +413,24 @@ const TEXT = {
     proxySaved: 'Saved',
     proxyInvalid: 'The proxy URL is not valid',
     settingsBuildHint: 'Skipped automatically when sources are unchanged.',
+    mavenTitle: 'Build environment',
+    mavenHome: 'Maven home',
+    mavenHomeHint: 'Builds use only this Maven, never the project mvnw / IDE copy / PATH. Only saved when a version can be read.',
+    mavenSettings: 'settings.xml',
+    mavenSettingsHint: 'Leave empty to use the Maven default; a company mirror usually lives here.',
+    mavenNone: 'not set, builds will fail',
+    mavenSettingsOn: 'enabled',
+    mavenVersionBad: 'No version detected, not saved',
+    mavenPick: 'Choose…',
+    mavenClear: 'Clear',
+    mavenUnset: 'Not chosen',
+    browseDirTitle: 'Choose the Maven directory',
+    browseFileTitle: 'Choose a settings.xml',
+    browseEmpty: 'Nothing to pick in this folder',
+    browseFail: 'This folder cannot be read',
+    browseDrives: 'This PC',
+    browsePick: 'Choose',
+    browsePickHere: 'Choose this folder',
     settingsData: 'Data directory',
     settingsPerms: 'SQL permissions',
     permAllow: 'Allow',
@@ -728,6 +764,13 @@ textarea.jops-input,textarea.jops-textarea{height:auto;padding:6px 10px;line-hei
 .jops-cand[data-on="true"]{background:var(--jops-surface)}
 .jops-cand code{font-family:var(--jops-mono);color:var(--jops-fg-muted)}
 .jops-row{display:flex;gap:var(--jops-s2);align-items:center;font-size:12px}
+.jops-row > .jops-input{width:auto;flex:0 1 320px;font-family:var(--jops-mono)}
+.jops-pick-list{display:flex;flex-direction:column;gap:2px;max-height:320px;overflow-y:auto;border:1px solid var(--jops-line);border-radius:8px;padding:4px}
+.jops-pick-row{display:flex;flex:none;align-items:center;height:28px;padding:0 8px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12.5px;color:var(--jops-fg);text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jops-pick-row:hover{background:var(--jops-surface-2)}
+.jops-pick-row:focus-visible{outline:none;box-shadow:var(--jops-ring)}
+.jops-pick-row[data-file="true"]{color:var(--jops-fg-muted)}
+.jops-pick-row[data-selected="true"]{background:var(--jops-surface-2);box-shadow:var(--jops-ring)}
 .jops-row > .jops-field{flex:1;min-width:0}
 
 /* ===================== 接口页 / 表格 ===================== */
@@ -2102,6 +2145,63 @@ function SwitchRow(props) {
     }))
 }
 
+// 面板内的路径选择器：浏览器的 file input 只给内容不给绝对路径，所以目录由 host 列
+function PathPicker(props) {
+  const [listing, setListing] = React.useState(null)
+  const [picked, setPicked] = React.useState('')
+  const [note, setNote] = React.useState('')
+  const load = async (dir) => {
+    const data = await props.run('mavenBrowse', { dir: dir || '', files: props.files })
+    if (!data || !data.browse) {
+      setNote(String((data && data.error) || txt('browseFail')))
+      return
+    }
+    setNote('')
+    setListing(data.browse)
+  }
+  React.useEffect(() => { load(props.start || '') }, [])
+  const rows = []
+  if (listing) {
+    if (listing.parent) {
+      rows.push(h('button', {
+        key: '..', type: 'button', className: 'jops-pick-row', onClick: () => load(listing.parent),
+      }, '..'))
+    }
+    for (const item of listing.dirs) {
+      rows.push(h('button', {
+        key: item.path, type: 'button', className: 'jops-pick-row', title: item.path, onClick: () => load(item.path),
+      }, item.name + '/'))
+    }
+    for (const item of listing.files) {
+      rows.push(h('button', {
+        key: item.path,
+        type: 'button',
+        className: 'jops-pick-row',
+        'data-file': 'true',
+        'data-selected': picked === item.path ? 'true' : 'false',
+        title: item.path,
+        onClick: () => setPicked(item.path),
+      }, item.name))
+    }
+  }
+  const title = props.files ? txt('browseFileTitle') : txt('browseDirTitle')
+  return h(JopsDialog, { title, onClose: props.onClose },
+    h('div', { className: 'jops-dialog-head' }, title),
+    h('div', { className: 'jops-dialog-body' },
+      h('div', { className: 'jops-hint' }, listing ? listing.dir || txt('browseDrives') : txt('loading')),
+      note ? h('div', { className: 'jops-note' }, note) : null,
+      h('div', { className: 'jops-pick-list' }, rows.length > 0 ? rows : h('div', { className: 'jops-hint' }, txt('browseEmpty')))),
+    h('div', { className: 'jops-dialog-foot' },
+      h('button', { type: 'button', className: 'jops-btn', onClick: props.onClose }, txt('cancel')),
+      h('button', {
+        type: 'button',
+        className: 'jops-btn',
+        'data-primary': 'true',
+        disabled: !listing || (props.files ? picked === '' : listing.dir === ''),
+        onClick: () => props.onPick(props.files ? picked : listing.dir),
+      }, props.files ? txt('browsePick') : txt('browsePickHere'))))
+}
+
 function SettingsTab(props) {
   const state = props.state || {}
   const perms = state.sqlPerms || {}
@@ -2118,6 +2218,29 @@ function SettingsTab(props) {
   }
   const buildLocked = Boolean(state.lint && state.lint.tools && state.lint.tools.spotbugs && state.lint.tools.spotbugs.enabled)
   const [proxyNote, setProxyNote] = React.useState('')
+  // 保存被拒时把原生原因显示在对应输入框下面，切页签后靠 state 回显
+  const [homeNote, setHomeNote] = React.useState('')
+  const [fileNote, setFileNote] = React.useState('')
+  // '' | 'home' | 'file'：打开的是目录选择器还是 settings.xml 选择器
+  const [picking, setPicking] = React.useState('')
+  const saveMaven = async (field, value) => {
+    const data = await props.run('settings', { [field]: value })
+    const text = data && data.ok === false ? String(data.error || '') : ''
+    if (field === 'mavenHome') setHomeNote(text)
+    else setFileNote(text)
+  }
+  // 优先用桌面宿主的原生选择框；宿主不支持（纯 node / utility 进程）才退回面板内目录列表
+  const choose = async (field) => {
+    const files = field === 'mavenSettings'
+    const data = await props.run('mavenPick', { files })
+    const pick = data && data.pick
+    // 旧版宿主不认识 mavenPick 时会返回 ok:false，这里退回面板内列表而不是只报错
+    if (!pick || pick.supported === false) {
+      setPicking(files ? 'file' : 'home')
+      return
+    }
+    if (pick.path) await saveMaven(field, pick.path)
+  }
   const saveProxy = async (value) => {
     const data = await props.run('proxySave', { httpProxy: value })
     setProxyNote(data && data.ok === false ? String(data.error || txt('proxyInvalid')) : txt('proxySaved'))
@@ -2132,6 +2255,48 @@ function SettingsTab(props) {
         label: txt('settingsBuild'),
         onChange: (next) => props.run('settings', { buildEnabled: next }),
       }, h('span', null, txt('settingsBuildHint')))),
+    h('div', { className: 'jops-card' },
+      h('b', null, txt('mavenTitle')),
+      h('div', { className: 'jops-field' },
+        h('span', null, txt('mavenHome')),
+        h('div', { className: 'jops-row' },
+          h('input', {
+            className: 'jops-input',
+            readOnly: true,
+            value: state.mavenHome || '',
+            placeholder: txt('mavenUnset'),
+            title: state.mavenHome || '',
+          }),
+          h('button', { type: 'button', className: 'jops-btn', onClick: () => choose('mavenHome') }, txt('mavenPick')),
+          state.mavenHome
+            ? h('button', {
+              type: 'button', className: 'jops-btn', 'data-ghost': 'true', onClick: () => saveMaven('mavenHome', ''),
+            }, txt('mavenClear'))
+            : null)),
+      h('div', { className: 'jops-hint' }, homeNote || [
+        state.mavenHome
+          ? (state.mavenVersion ? 'Maven ' + state.mavenVersion : txt('mavenVersionBad'))
+          : txt('mavenNone'),
+        txt('mavenHomeHint'),
+      ].join(' \u00B7 ')),
+      h('div', { className: 'jops-field' },
+        h('span', null, txt('mavenSettings')),
+        h('div', { className: 'jops-row' },
+          h('input', {
+            className: 'jops-input',
+            readOnly: true,
+            value: state.mavenSettings || '',
+            placeholder: txt('mavenUnset'),
+            title: state.mavenSettings || '',
+          }),
+          h('button', { type: 'button', className: 'jops-btn', onClick: () => choose('mavenSettings') }, txt('mavenPick')),
+          state.mavenSettings
+            ? h('button', {
+              type: 'button', className: 'jops-btn', 'data-ghost': 'true', onClick: () => saveMaven('mavenSettings', ''),
+            }, txt('mavenClear'))
+            : null)),
+      h('div', { className: 'jops-hint' }, fileNote ||
+        (state.mavenSettings ? txt('mavenSettingsOn') + ' \u00B7 ' : '') + txt('mavenSettingsHint'))),
     h('div', { className: 'jops-card' },
       h('b', null, txt('proxyTitle')),
       h('div', { className: 'jops-row' },
@@ -2190,7 +2355,19 @@ function SettingsTab(props) {
                     })))))
           })))),
     h('div', { className: 'jops-hint' },
-      txt('permDenied') + ' · ' + txt('permConfirmHint')))
+      txt('permDenied') + ' · ' + txt('permConfirmHint')),
+    picking === ''
+      ? null
+      : h(PathPicker, {
+        files: picking === 'file',
+        start: '',
+        run: props.run,
+        onClose: () => setPicking(''),
+        onPick: (path) => {
+          setPicking('')
+          saveMaven(picking === 'file' ? 'mavenSettings' : 'mavenHome', path)
+        },
+      }))
 }
 
 // 页签 id 与文案 key 同名，顺序即展示顺序
@@ -2249,6 +2426,10 @@ function JavaOpsView(props) {
         // 代理地址同理：漏字段会让输入框在切页签后变空，看起来像没保存
         httpProxy: typeof next.httpProxy === 'string' ? next.httpProxy : prev.httpProxy,
         buildEnabled: typeof next.buildEnabled === 'boolean' ? next.buildEnabled : prev.buildEnabled,
+        // Maven 配置同理：漏字段会让输入框在切页签后变空
+        mavenHome: typeof next.mavenHome === 'string' ? next.mavenHome : prev.mavenHome,
+        mavenVersion: typeof next.mavenVersion === 'string' ? next.mavenVersion : prev.mavenVersion,
+        mavenSettings: typeof next.mavenSettings === 'string' ? next.mavenSettings : prev.mavenSettings,
         workspace: next.workspace || prev.workspace,
         candidates: next.candidates || prev.candidates,
       }))

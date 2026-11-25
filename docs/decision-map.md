@@ -9,7 +9,7 @@
 - 服务发现：扫描源码找 `@SpringBootApplication` / `@EnableAutoConfiguration` / 含 `main` 的应用类（跳过 `target`、`node_modules`、`.git`）；启动类归属最近的 `pom.xml`/`build.gradle` 模块；读该模块 `application*.yml` 取 `server.port`/`context-path`/profile。端口扫不到要求用户填。
 - 添加服务：面板与工具都支持；可勾选扫描出的候选，也可手输全限定类名（校验归属模块）；字段可编辑（服务名、端口、VM 参数、环境变量、工作目录、profile、就绪 URL）。端口覆盖只用运行时参数（`-Dserver.port=8802`），绝不改源文件。
 - 停止：优雅停（`taskkill` 不带 `/F`，配了 actuator 先调 shutdown）→ 轮询端口释放 → 30s 超时自动强杀并标记。restart 复用。
-- 构建：用项目自带 `mvnw`/`gradlew`（否则全局 mvn/gradle），编译该模块及其依赖兄弟模块；失败返回 `file:line` + 错误摘要；有单独 build 操作；启动前自动构建默认开、可按服务关闭。
+- 构建：只用面板「设置 → 构建环境」固定的 Maven 目录与 settings.xml（不回落项目 `mvnw`、IDE 捆绑或 PATH），编译该模块及其依赖兄弟模块；失败返回 `file:line` + 错误摘要；有单独 build 操作（`java_ops_build`，按服务 id 或 mainClass 解析模块）；启动前自动构建默认开、可按服务关闭。
 - SQL：连接手填（host/port/db/user/password），可测连通；密码加密保存不回显；默认最多 500 行、超时 10s；权限矩阵 SELECT/INSERT/UPDATE/DELETE/DDL 默认只开 SELECT，面板与工具共用；UPDATE/DELETE 无 WHERE 硬拦截（设置可放行）。
 - SQL 页面不提供执行入口：SQL 只能由 Agent 工具执行，页面是只读的执行记录（时间/语句/结果/耗时）。
 - 高危操作一律人工确认，走 DSH 原生 `ctx.userQuestions` 弹窗（`ctx.approval` 亦可）。
@@ -241,7 +241,7 @@ Type: Grilling
 
 ### Answer
 
-实测落地（示例项目 Order）：`mvnw` → IDE 捆绑的 Maven（plexus launcher）→ PATH maven 的优先级；一次调用 `compile dependency:build-classpath` 同时完成编译与 classpath；源文件与 pom 的 mtime 未变则跳过构建（面板显示「构建 已跳过」）；失败取 `[ERROR] file.java:[line]` 前 8 行，无 `[ERROR]` 时回退最后 12 行非空输出。单独 `java_ops_build` 走同一条路径。
+实测落地（示例项目 Order）：只认面板固定的 Maven（经 plexus launcher 直接起 `Launcher`，避开带空格的 `mvn.cmd`），未设置或失效直接报中文原因；一次调用 `compile dependency:build-classpath` 同时完成编译与 classpath；源文件与 pom 的 mtime 未变则跳过构建（面板显示「构建 已跳过」）；失败取 `[ERROR] file.java:[line]` 前 8 行，无 `[ERROR]` 时回退最后 12 行非空输出。单独 `java_ops_build` 走同一条路径。
 
 ## #17: 验收场景
 

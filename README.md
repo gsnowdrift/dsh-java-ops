@@ -34,7 +34,7 @@ dsh plugin --profile web why @gsnowdrift/dsh-java-ops      # 看装的是哪个�
 dsh plugin --profile web add github:gsnowdrift/dsh-java-ops
 ```
 
-本机需要 JDK 与 Maven（或项目自带 `mvnw`）——构建和启动都靠它；插件自身依赖 `mysql2`（纯 JS，无原生编译），安装时自动装。
+本机需要 JDK 与 Maven，且必须先在面板「设置 → 构建环境」里选好 Maven 目录——构建只用这一个，不回落到项目自带 `mvnw`、IDE 捆绑的 Maven 或 PATH 上的 `mvn`（没选就报「未设置 Maven 目录」）。同一个卡片里指定的 `settings.xml` 会以 `-s` 传给构建，内网私服靠它解析依赖。目录里读不出 `lib/maven-core-*.jar` 的版本号就不保存，避免把错目录带进构建。插件自身依赖 `mysql2`（纯 JS，无原生编译），安装时自动装。
 
 本地开发用 link 方式：
 
@@ -83,7 +83,7 @@ dsh plugin --profile web add github:gsnowdrift/dsh-java-ops
 | 添加服务 | 下拉联想（输包名或类名即可筛）+ 手填全限定类名；端口、服务名、VM 参数、profile 均可改 |
 | 启停重启 | 启动前自动构建（可关）、等待就绪＝探针报告端口已监听或接口能回 HTTP（最长 120s），启动失败由内置探针的 Spring 事件直接报因；同一服务单实例守卫，不同服务可并行；启动前校验端口，被占用时报出进程名与 PID，由调用方决定是否结束 |
 | 停止 | 给进程发 Ctrl+C（SIGINT），Spring 优雅停机；30s 未退出才强杀 |
-| 构建 | `mvnw` / `gradlew` 优先，失败给 `file:line` 结构化错误 |
+| 构建 | 只用面板固定的 Maven（`-s` 带上配的 settings.xml），失败给 `file:line` 结构化错误 |
 | 日志 | 实时日志分级着色、搜索过滤、放大、Esc 退出；每次启动/重启清空上一轮 |
 | SQL | 三组权限（读/写/删）+ 可选高风险确认、结果 500 行 / 10s 超时、执行记录留 3 天 |
 | 接口调用 | `java_ops_http_request` 发任意方法请求；面板「接口」页维护请求头预设（可按行启用/停用），调用自动带上；下部分列出时间、方法、URL、耗时、状态码，可点开看请求头、响应头与响应体 |
